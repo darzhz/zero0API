@@ -24,22 +24,38 @@ func SetupPaymentsRoutes(app *pocketbase.PocketBase) func(*core.ServeEvent) erro
 
 			// Optional: Read payment input (like amount, customer info) from the request
 			// For now, hardcoding an example payment body
+			var input utils.PaymentRequestClient
+			if err := json.NewDecoder(c.Request.Body).Decode(&input); err != nil {
+				return c.JSON(http.StatusBadRequest, map[string]any{
+					"error": "Invalid or missing request body: " + err.Error(),
+				})
+			}
+
+			MerchantOrderID := utils.GenerateRandomUUID()
+
+			// print input values for debugging
+			utils.LogDebug("Payment Input", map[string]any{
+				"amount":     input.Amount,
+				"entityType": input.EntityType,
+				"entityId":   input.EntityID,
+				"vendorId":   input.VendorID,
+				"userId":     input.UserID,
+			})
 			paymentPayload := utils.PaymentRequest{
-				MerchantOrderID: "order12345",
-				Amount:          1,
-				ExpireAfter:     1200,
+				MerchantOrderID: MerchantOrderID,
+				Amount:          input.Amount,
+				ExpireAfter:     3000,
 				MetaInfo: utils.MetaInfo{
-					UDF1: "example_udf1",
-					UDF2: "example_udf2",
-					UDF3: "example_udf3",
-					UDF4: "example_udf4",
-					UDF5: "example_udf5",
+					UDF1: input.EntityType,
+					UDF2: input.EntityID,
+					UDF3: input.VendorID,
+					UDF4: input.UserID,
 				},
 				PaymentFlow: utils.FlowInfo{
 					Type:    "PG_CHECKOUT",
 					Message: "Please complete your payment",
 					MerchantUrls: utils.MerchantURLs{
-						RedirectURL: "https://example.com/payment-success",
+						RedirectURL: "https://zero0.cutify.space/",
 					},
 				},
 			}
@@ -64,7 +80,32 @@ func SetupPaymentsRoutes(app *pocketbase.PocketBase) func(*core.ServeEvent) erro
 					"error": "Failed to decode PG response",
 				})
 			}
+			collection, err := app.FindCollectionByNameOrId("payments")
+			if err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]any{
+					"error": "Unable to fetch collection",
+				})
+			}
+			record := core.NewRecord(collection)
+			record.Set("merchantOrderID", MerchantOrderID)
+			record.Set("amount", input.Amount)
+			record.Set("entityType", input.EntityType)
+			record.Set("entityID", input.EntityID)
+			record.Set("vendorID", input.VendorID)
+			record.Set("status", "PENDING")
+			record.Set("userID", input.UserID)
+			record.Set("orderID", pgResponse["orderId"].(string))
+			record.Set("expireAt", int(pgResponse["expireAt"].(float64)))
+			expireAt := int64(pgResponse["expireAt"].(float64))
 
+			err = app.Save(record)
+			if err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]any{
+					"error": "Unable to save payment record",
+				})
+			}
+
+			utils.AddOrderJob(MerchantOrderID, expireAt)
 			return c.JSON(http.StatusOK, pgResponse)
 		})
 

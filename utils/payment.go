@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type AuthPayload struct {
@@ -49,6 +51,14 @@ var tokenCache struct {
 	sync.Mutex
 	Token     string
 	ExpiresAt time.Time
+}
+
+type PaymentRequestClient struct {
+	Amount     int    `json:"amount"`
+	EntityType string `json:"entityType"`
+	EntityID   string `json:"entityId"`
+	VendorID   string `json:"vendorId"`
+	UserID     string `json:"userId"`
 }
 
 // Replace this with actual PG auth endpoint & credentials
@@ -116,4 +126,10 @@ func GetPGAuthToken() (string, error) {
 	tokenCache.ExpiresAt = time.Now().Add(time.Duration(AuthResp.ExpiresIn) * time.Second)
 	log.Println("PG auth token fetched successfully:", tokenCache.Token)
 	return tokenCache.Token, nil
+}
+func GenerateRandomUUID() string {
+	return uuid.New().String()
+}
+func LogDebug(message string, data map[string]any) {
+	log.Printf("DEBUG: %s - %v", message, data)
 }
