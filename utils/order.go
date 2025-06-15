@@ -85,11 +85,37 @@ func AddOrderJob(id string, expireAtMillis int64) {
 	jobQueue.Unlock()
 }
 
-func getOrderStatus(merchantOrderID string) (*OrderJob, error) {
+func getOrderStatus(app *pocketbase.PocketBase, merchantOrderID string) (*OrderJob, error) {
 	fmt.Println("Attempting to fetch order status for", merchantOrderID)
 	token, err := GetPGAuthToken()
 	if err != nil {
 		return nil, err
+	}
+	//Checking if the order is completed or failed in db
+	record, err := app.FindFirstRecordByFilter("payments", fmt.Sprintf("merchantOrderID = '%s'", merchantOrderID))
+	if err != nil {
+		return nil, err
+	}
+	if record != nil {
+		if record.Get("status").(string) == "completed" {
+			return &OrderJob{
+				MerchantOrderID: merchantOrderID,
+				State:           "COMPLETED",
+			}, nil
+		}
+		if record.Get("status").(string) == "failed" {
+			return &OrderJob{
+				MerchantOrderID: merchantOrderID,
+				State:           "FAILED",
+			}, nil
+		}
+		//checking if the order is expired
+		if time.Now().After(record.Get("expires").(time.Time)) {
+			return &OrderJob{
+				MerchantOrderID: merchantOrderID,
+				State:           "EXPIRED",
+			}, nil
+		}
 	}
 	req, _ := http.NewRequest("GET", os.Getenv("PG_API_URL")+"/checkout/v2/order/"+merchantOrderID+"/status", nil)
 	fmt.Println("Request URL:", req.URL.String())
@@ -137,7 +163,7 @@ func InitPolling(app *pocketbase.PocketBase, workers int) {
 		go func() {
 			defer wg.Done()
 			for job := range jobCh {
-				resp, err := getOrderStatus(job.MerchantOrderID)
+				resp, err := getOrderStatus(app, job.MerchantOrderID)
 				if err != nil {
 					log.Printf("poll error %s: %v", job.MerchantOrderID, err)
 				} else {
@@ -146,6 +172,10 @@ func InitPolling(app *pocketbase.PocketBase, workers int) {
 					respBytes, _ := json.MarshalIndent(resp, "", "  ")
 					log.Println(string(respBytes))
 					log.Printf("order %s → %s", job.MerchantOrderID, state)
+					if state == "EXPIRED" {
+						log.Println(fmt.Sprintf("Expired after no valid response merchantOrderID = '%s'", job.MerchantOrderID))
+						continue
+					}
 					if state == "COMPLETED" || state == "FAILED" {
 						// TODO: update DB, notify UI
 						log.Printf("order %s completed", job.MerchantOrderID)
