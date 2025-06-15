@@ -8,6 +8,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/pocketbase/pocketbase"
 )
 
 type OrderJob struct {
@@ -63,29 +65,34 @@ var jobQueue = struct {
 	jobs []*OrderJob
 }{jobs: []*OrderJob{}}
 
-func AddOrderJob(id string, expireAfterSecs int64) {
-	fmt.Println("Adding order job:", id, "with expiration in", expireAfterSecs, "seconds")
-	if expireAfterSecs <= 0 {
+func AddOrderJob(id string, expireAtMillis int64) {
+	expireAt := time.UnixMilli(expireAtMillis)
+	fmt.Println("Adding order job:", id, "which expires at", expireAt)
+	if time.Now().After(expireAt) {
+		fmt.Println("Job already expired, skipping:", id)
 		return
 	}
-	now := time.Now()
+
 	job := &OrderJob{
 		MerchantOrderID: id,
-		Expires:         now.Add(time.Duration(expireAfterSecs) * time.Second),
-		NextPoll:        now.Add(20 * time.Second),
+		Expires:         expireAt,
+		NextPoll:        time.Now().Add(3 * time.Second), // poll soon
 		Interval:        3 * time.Second,
 	}
+
 	jobQueue.Lock()
 	jobQueue.jobs = append(jobQueue.jobs, job)
 	jobQueue.Unlock()
 }
 
 func getOrderStatus(merchantOrderID string) (*OrderJob, error) {
+	fmt.Println("Attempting to fetch order status for", merchantOrderID)
 	token, err := GetPGAuthToken()
 	if err != nil {
 		return nil, err
 	}
-	req, _ := http.NewRequest("GET", os.Getenv("PG_API_URL")+"/v2/orders/"+merchantOrderID, nil)
+	req, _ := http.NewRequest("GET", os.Getenv("PG_API_URL")+"/checkout/v2/order/"+merchantOrderID+"/status", nil)
+	fmt.Println("Request URL:", req.URL.String())
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "O-Bearer "+token)
 	client := http.Client{Timeout: 10 * time.Second}
@@ -105,6 +112,7 @@ func getOrderStatus(merchantOrderID string) (*OrderJob, error) {
 	}
 	job := &OrderJob{
 		MerchantOrderID: osr.OrderID,
+		State:           osr.State,
 		Expires:         time.Unix(osr.ExpireAt, 0),
 		NextPoll:        time.Now().Add(20 * time.Second),
 		Interval:        3 * time.Second,
@@ -113,7 +121,7 @@ func getOrderStatus(merchantOrderID string) (*OrderJob, error) {
 
 }
 
-func InitPolling(workers int) {
+func InitPolling(app *pocketbase.PocketBase, workers int) {
 	if workers <= 0 {
 		log.Println("Invalid number of workers, defaulting to 5")
 		workers = 5
@@ -134,9 +142,24 @@ func InitPolling(workers int) {
 					log.Printf("poll error %s: %v", job.MerchantOrderID, err)
 				} else {
 					state := resp.State
+					//print out response
+					respBytes, _ := json.MarshalIndent(resp, "", "  ")
+					log.Println(string(respBytes))
 					log.Printf("order %s → %s", job.MerchantOrderID, state)
 					if state == "COMPLETED" || state == "FAILED" {
 						// TODO: update DB, notify UI
+						log.Printf("order %s completed", job.MerchantOrderID)
+						record, err := app.FindFirstRecordByFilter("payments", fmt.Sprintf("merchantOrderID = '%s'", job.MerchantOrderID))
+						if err != nil {
+							log.Println(err)
+							continue
+						}
+						record.Set("status", state)
+						err = app.Save(record)
+						if err != nil {
+							log.Println(err)
+						}
+
 						continue
 					}
 					// Reschedule next poll
@@ -171,10 +194,10 @@ func InitPolling(workers int) {
 			}
 			jobQueue.jobs = pending
 			jobQueue.Unlock()
-			if len(pending) == 0 {
-				ticker.Stop()
-				return
-			}
+			// if len(pending) == 0 {
+			// 	ticker.Stop()
+			// 	return
+			// }
 		}
 	}()
 
