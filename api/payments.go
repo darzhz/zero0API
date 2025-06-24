@@ -43,7 +43,7 @@ func SetupPaymentsRoutes(app *pocketbase.PocketBase) func(*core.ServeEvent) erro
 			})
 			paymentPayload := utils.PaymentRequest{
 				MerchantOrderID: MerchantOrderID,
-				Amount:          input.Amount,
+				Amount:          input.Amount * 100,
 				ExpireAfter:     3000,
 				MetaInfo: utils.MetaInfo{
 					UDF1: input.EntityType,
@@ -55,7 +55,7 @@ func SetupPaymentsRoutes(app *pocketbase.PocketBase) func(*core.ServeEvent) erro
 					Type:    "PG_CHECKOUT",
 					Message: "Please complete your payment",
 					MerchantUrls: utils.MerchantURLs{
-						RedirectURL: "https://zero0.cutify.space/",
+						RedirectURL: "https://zero0.cutify.space/payment/" + MerchantOrderID,
 					},
 				},
 			}

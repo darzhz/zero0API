@@ -110,7 +110,7 @@ func getOrderStatus(app *pocketbase.PocketBase, merchantOrderID string) (*OrderJ
 			}, nil
 		}
 		//checking if the order is expired
-		if time.Now().After(record.Get("expires").(time.Time)) {
+		if time.Now().After(time.UnixMilli(int64(record.Get("expireAt").(float64)))) {
 			return &OrderJob{
 				MerchantOrderID: merchantOrderID,
 				State:           "EXPIRED",
