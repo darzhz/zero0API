@@ -43,7 +43,7 @@ func SetupPaymentsRoutes(app *pocketbase.PocketBase) func(*core.ServeEvent) erro
 			})
 			paymentPayload := utils.PaymentRequest{
 				MerchantOrderID: MerchantOrderID,
-				Amount:          input.Amount * 100,
+				Amount:          input.Amount * 100, // Convert to paise
 				ExpireAfter:     3000,
 				MetaInfo: utils.MetaInfo{
 					UDF1: input.EntityType,

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/pocketbase/pocketbase"
+	"github.com/pocketbase/pocketbase/core"
 )
 
 type OrderJob struct {
@@ -110,7 +111,8 @@ func getOrderStatus(app *pocketbase.PocketBase, merchantOrderID string) (*OrderJ
 			}, nil
 		}
 		//checking if the order is expired
-		if time.Now().After(time.UnixMilli(int64(record.Get("expireAt").(float64)))) {
+		expireAtTimestamp := record.Get("expireAt").(float64)
+		if time.Now().Unix() > int64(expireAtTimestamp) {
 			return &OrderJob{
 				MerchantOrderID: merchantOrderID,
 				State:           "EXPIRED",
@@ -186,6 +188,36 @@ func InitPolling(app *pocketbase.PocketBase, workers int) {
 						}
 						record.Set("status", state)
 						err = app.Save(record)
+						if record.Get("entityType").(string) == "event" {
+							// creating a booking entry
+							ticketID := record.Get("entityID").(string)
+							ticketRecord, err := app.FindFirstRecordByFilter("EventTickets", fmt.Sprintf("id = '%s'", ticketID))
+							if err != nil {
+								log.Println(err)
+								continue
+							}
+							errs := app.ExpandRecord(ticketRecord, []string{"eventID"}, nil)
+							if len(errs) > 0 {
+								fmt.Println(fmt.Sprintf("failed to expand: %v", errs))
+							}
+							log.Println(ticketRecord.Get("tier").(string))
+							// creating a booking entry
+							eventBookingCollection, err := app.FindCollectionByNameOrId("Bookings") //! should be replaced with ticketBooking
+							if err != nil {
+								log.Println(err)
+								continue
+							}
+							eventBookingRecord := core.NewRecord(eventBookingCollection)
+							eventBookingRecord.Set("EventId", ticketRecord.Get("eventID").(string))
+							eventBookingRecord.Set("TicketID", ticketRecord.Get("id").(string))
+							eventBookingRecord.Set("TotalPrice", record.Get("amount").(string))
+							eventBookingRecord.Set("UserId", record.Get("userID").(string))
+							err = app.Save(eventBookingRecord)
+							if err != nil {
+								log.Println(err)
+								continue
+							}
+						}
 						if err != nil {
 							log.Println(err)
 						}
