@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"zero0Api/utils"
@@ -13,7 +14,12 @@ import (
 func SetupVideoRoutes(app *pocketbase.PocketBase) func(*core.ServeEvent) error {
 	return func(e *core.ServeEvent) error {
 		// serve static files
-		e.Router.GET("pb_public/{path...}", apis.Static(os.DirFS("./pb_public"), false))
+		e.Router.GET("/pb_public/{path...}", apis.Static(os.DirFS("./pb_public"), false))
+		if wd, err := os.Getwd(); err == nil {
+			fmt.Println("CWD:", wd)
+		} else {
+			fmt.Println("Error getting CWD:", err)
+		}
 
 		// trending videos route
 		e.Router.GET("/api/next-videos", func(c *core.RequestEvent) error {
