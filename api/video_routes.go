@@ -32,6 +32,12 @@ func SetupVideoRoutes(app *pocketbase.PocketBase) func(*core.ServeEvent) error {
 				20,           // limit
 				0,
 			)
+			errs := app.ExpandRecords(records, []string{"uploadedBy"}, nil)
+			if len(errs) > 0 {
+				return c.JSON(http.StatusInternalServerError, map[string]any{
+					"error": "Failed to expand records",
+				})
+			}
 
 			nowPlaying := map[string]any{}
 			prefetch := []map[string]any{}
