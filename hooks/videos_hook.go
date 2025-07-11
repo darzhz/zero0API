@@ -16,8 +16,8 @@ func HandleVideoUpload(app *pocketbase.PocketBase) func(*core.RecordEvent) error
 		go func() {
 			filePath := filepath.Join("pb_data", "storage", e.Record.BaseFilesPath(), fileName)
 
-			r480 := "https://localhost:8090/" + utils.EncodeVideo(filePath, 480, e.Record.Id)
-			r720 := "https://localhost:8090/" + utils.EncodeVideo(filePath, 720, e.Record.Id)
+			r480 := "https://api.cutify.space/" + utils.EncodeVideo(filePath, 480, e.Record.Id)
+			r720 := "https://api.cutify.space/" + utils.EncodeVideo(filePath, 720, e.Record.Id)
 
 			e.Record.Set("status", "completed")
 			e.Record.Set("data", utils.EncodedVideo{R480p: r480, R720p: r720})

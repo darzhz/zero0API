@@ -38,8 +38,6 @@ func EncodeVideo(filePath string, resolution int, recordID string) string {
 
 	output, err := cmd.CombinedOutput()
 
-	log.Printf("[FFMPEG] Successfully encoded %s to %s\nOutput:\n%s", filePath, outputPath, string(output))
-
 	if err != nil {
 		log.Printf("[FFMPEG ERROR] Encoding %s -> %s failed: %v\nOutput:\n%s", filePath, outputPath, err, string(output))
 		return "N/A"
