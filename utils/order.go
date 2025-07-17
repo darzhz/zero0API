@@ -86,6 +86,20 @@ func AddOrderJob(id string, expireAtMillis int64) {
 	jobQueue.Unlock()
 }
 
+func CheckIfTicketAvailable(app *pocketbase.PocketBase, entityID string) bool {
+	record, err := app.FindFirstRecordByFilter("EventTickets", fmt.Sprintf("id = '%s'", entityID))
+	if err != nil {
+		log.Fatal(err)
+		return false
+	}
+	if record != nil {
+		avlQ := record.Get("availableQuantity").(float64)
+		fmt.Println("available quantity", avlQ)
+		return avlQ > 0
+	}
+	return false
+}
+
 func getOrderStatus(app *pocketbase.PocketBase, merchantOrderID string) (*OrderJob, error) {
 	fmt.Println("Attempting to fetch order status for", merchantOrderID)
 	token, err := GetPGAuthToken()
@@ -207,15 +221,31 @@ func InitPolling(app *pocketbase.PocketBase, workers int) {
 								log.Println(err)
 								continue
 							}
+							avlTicketQuantity := ticketRecord.Get("availableQuantity").(float64)
+
 							eventBookingRecord := core.NewRecord(eventBookingCollection)
 							eventBookingRecord.Set("EventId", ticketRecord.Get("eventID").(string))
 							eventBookingRecord.Set("TicketID", ticketRecord.Get("id").(string))
 							eventBookingRecord.Set("TotalPrice", record.Get("amount").(string))
 							eventBookingRecord.Set("UserId", record.Get("userID").(string))
+							if avlTicketQuantity <= 0 {
+								log.Println("No more tickets available")
+								eventBookingRecord.Set("PaymentStatus", "Waitlist")
+							} else {
+								eventBookingRecord.Set("PaymentStatus", "Completed")
+							}
 							err = app.Save(eventBookingRecord)
 							if err != nil {
 								log.Println(err)
 								continue
+							}
+							if avlTicketQuantity > 0 {
+								ticketRecord.Set("availableQuantity", (avlTicketQuantity - 1))
+								err = app.Save(ticketRecord)
+								if err != nil {
+									log.Println(err)
+									continue
+								}
 							}
 						}
 						if err != nil {

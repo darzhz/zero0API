@@ -41,6 +41,12 @@ func SetupPaymentsRoutes(app *pocketbase.PocketBase) func(*core.ServeEvent) erro
 				"vendorId":   input.VendorID,
 				"userId":     input.UserID,
 			})
+			if !utils.CheckIfTicketAvailable(app, input.EntityID) {
+				return c.JSON(http.StatusBadRequest, map[string]any{
+					"error": "Ticket not available",
+				})
+			}
+
 			paymentPayload := utils.PaymentRequest{
 				MerchantOrderID: MerchantOrderID,
 				Amount:          input.Amount * 100, // Convert to paise

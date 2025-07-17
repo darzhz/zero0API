@@ -19,6 +19,7 @@ func main() {
 
 	app.OnServe().BindFunc(api.SetupVideoRoutes(app))
 	app.OnServe().BindFunc(api.SetupPaymentsRoutes(app))
+	app.OnServe().BindFunc(api.SetupVerifyRoutes(app))
 	app.OnRecordAfterCreateSuccess("videos").BindFunc(hooks.HandleVideoUpload(app))
 
 	go utils.InitPolling(app, 5) // Initialize polling with 5 workers in a separate routine
