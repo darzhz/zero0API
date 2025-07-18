@@ -25,6 +25,12 @@ func SetupVerifyRoutes(app *pocketbase.PocketBase) func(*core.ServeEvent) error 
 					"status":  "failed",
 				})
 			}
+			errs := app.ExpandRecord(bookingData, []string{"UserId", "TicketID"}, nil)
+			if len(errs) > 0 {
+				return c.JSON(http.StatusInternalServerError, map[string]any{
+					"error": "Failed to expand records",
+				})
+			}
 
 			// Check if already verified
 			attendees, err := app.FindRecordsByFilter(
@@ -38,6 +44,12 @@ func SetupVerifyRoutes(app *pocketbase.PocketBase) func(*core.ServeEvent) error 
 				return c.JSON(http.StatusInternalServerError, map[string]any{
 					"message": "Error checking attendee records",
 					"status":  "failed",
+				})
+			}
+			erros := app.ExpandRecords(attendees, []string{"user", "bookingId"}, nil)
+			if len(erros) > 0 {
+				return c.JSON(http.StatusInternalServerError, map[string]any{
+					"error": "Failed to expand records",
 				})
 			}
 
@@ -66,17 +78,17 @@ func SetupVerifyRoutes(app *pocketbase.PocketBase) func(*core.ServeEvent) error 
 				}
 
 				return c.JSON(http.StatusOK, map[string]any{
-					"message": "Valid Ticket",
-					"status":  "success",
-					"data":    bookingData,
+					"message":   "Valid Ticket",
+					"status":    "success",
+					"checkedin": bookingData,
 				})
 			}
 
 			// Already verified
 			return c.JSON(http.StatusOK, map[string]any{
-				"message": "Already verified",
-				"status":  "success",
-				"data":    attendees,
+				"message":      "Already verified",
+				"status":       "success",
+				"alreadythere": attendees,
 			})
 		})
 		e.Router.GET("/api/attendees/{eventId}", func(c *core.RequestEvent) error {
