@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 	"zero0Api/utils"
 
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 func SetupVideoRoutes(app *pocketbase.PocketBase) func(*core.ServeEvent) error {
@@ -55,6 +57,35 @@ func SetupVideoRoutes(app *pocketbase.PocketBase) func(*core.ServeEvent) error {
 				"nowPlaying": nowPlaying,
 				"prefetch":   prefetch,
 			})
+		})
+		e.Router.GET("/api/register/{type}/{id}", func(c *core.RequestEvent) error {
+			registerType := c.Request.PathValue("type")
+			id := c.Request.PathValue("id")
+
+			videosCollection, _ := app.FindCollectionByNameOrId("videos")
+			record, _ := app.FindRecordById(videosCollection, id)
+
+			if registerType == "like" && record.Get("likes").(float64) >= 0 {
+				record.Set("likes", record.Get("likes").(float64)+1)
+			} else if registerType == "dislike" && record.Get("likes").(float64) > 0 {
+				record.Set("likes", record.Get("likes").(float64)-1)
+			} else if registerType == "view" {
+				record.Set("views", record.Get("views").(float64)+1)
+			}
+			//calculate heat score based on likes, views and created date
+			created := record.Get("created").(types.DateTime).Time()
+			heatScore := record.Get("likes").(float64)*0.2 +
+				record.Get("views").(float64)*0.3 +
+				float64(time.Since(created).Hours()/24)
+			record.Set("heatScore", heatScore)
+
+			if err := app.Save(record); err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]any{
+					"error": "Failed to save record",
+				})
+			}
+
+			return c.JSON(http.StatusOK, record)
 		})
 
 		return e.Next()
